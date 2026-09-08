@@ -23,7 +23,7 @@ public class EventDispatchException extends RuntimeException {
     }
 
     /** 例外を投げたリスナーの購読情報です。直列化された場合は null になります。 */
-    public  Subscription getSubscription() {
+    public Subscription getSubscription() {
         return subscription;
     }
 }

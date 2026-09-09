@@ -1,41 +1,41 @@
 package com.r5ylx.events;
 
 /**
- * 1 件の購読を表す取っ手です。
+ * A handle to a single subscription.
  *
- * <p>ラムダで購読すると返ってきます。アノテーションで購読した場合も
- * {@link EventBus#subscriptionsOf(Object)} から取り出せます。
+ * <p>Returned when you subscribe with a lambda. Subscriptions made with an annotation can also
+ * be obtained from {@link EventBus#subscriptionsOf(Object)}.
  *
- * <p>{@link AutoCloseable} を実装しているため、try-with-resources でも解除できます。
+ * <p>Because it implements {@link AutoCloseable}, it can be released with try-with-resources.
  */
 public interface Subscription extends AutoCloseable {
-    /** この購読を解除します。すでに解除済みなら何もしません。 */
+    /** Cancels this subscription. Does nothing if it is already cancelled. */
     void unsubscribe();
 
-    /** まだ購読中なら true を返します。 */
+    /** Returns true while this subscription is still registered. */
     boolean isSubscribed();
 
     /**
-     * 一時的に呼び出しを止めているかどうかです。
-     * 解除と違い、登録は残したまま呼び出しだけを飛ばします。
+     * Whether calls are temporarily suspended.
+     * Unlike unsubscribing, the registration is kept and only the call is skipped.
      */
     boolean isActive();
 
     void setActive(boolean active);
 
-    /** 購読しているイベントの型です。 */
+    /** The event type this subscription listens for. */
     Class<?> eventType();
 
-    /** 購読の持ち主です。ラムダ購読で持ち主を指定しなかった場合は、この取っ手自身が返ります。 */
+    /** The owner of this subscription. If no owner was given for a lambda, the handle itself is returned. */
     Object owner();
 
-    /** 実行順序です。大きいものから先に呼ばれます。 */
+    /** The order in which it runs. Higher values run first. */
     int priority();
 
-    /** 1 回だけ実行して自動解除する購読なら true を返します。 */
+    /** Returns true if this subscription runs once and then cancels itself. */
     boolean isOnce();
 
-    /** {@link #unsubscribe()} と同じです。例外は投げません。 */
+    /** Same as {@link #unsubscribe()}. Never throws. */
     @Override
     default void close() {
         unsubscribe();

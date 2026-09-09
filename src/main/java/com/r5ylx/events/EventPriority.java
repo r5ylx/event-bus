@@ -1,19 +1,19 @@
 package com.r5ylx.events;
 
 /**
- * リスナーの実行順序です。値が大きいものから先に呼ばれます。
+ * The order in which listeners run. Higher values run first.
  *
- * <p>数値を直接指定したい場合は {@link EventBus#subscribe(Object, Class, java.util.function.Consumer, int, boolean)}
- * を使ってください。この列挙型は代表的な段階に名前を付けたものです。
+ * <p>To pass a number directly, use {@link EventBus#subscribe(Object, Class, java.util.function.Consumer, int, boolean)}.
+ * This enum only puts names on the common steps.
  */
 public enum EventPriority {
-    /** 最初に実行されます。イベントを打ち消す判定などに使います。 */
+    /** Runs first. Use it for deciding whether to cancel an event. */
     HIGHEST(100),
     HIGH(75),
-    /** 既定値です。 */
+    /** The default. */
     NORMAL(50),
     LOW(25),
-    /** 最後に実行されます。集計やログなど、結果を観測するだけの処理に使います。 */
+    /** Runs last. Use it for work that only observes the outcome, such as metrics or logging. */
     LOWEST(0);
 
     private final int value;

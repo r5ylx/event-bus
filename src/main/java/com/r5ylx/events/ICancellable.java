@@ -1,17 +1,18 @@
 package com.r5ylx.events;
 
 /**
- * 打ち消せるイベントです。
+ * An event that can be cancelled.
  *
- * <p>{@link EventBus#post(Object)} は、リスナーを 1 つ呼ぶたびに {@link #isCancelled()} を確認します。
- * 打ち消された時点で配送は完全に終了し、親クラスやインターフェースに登録されたリスナーも呼ばれません。
+ * <p>{@link EventBus#post(Object)} checks {@link #isCancelled()} after every single listener.
+ * Once the event is cancelled, dispatch ends completely, and listeners registered on
+ * supertypes and interfaces are not called either.
  */
 public interface ICancellable {
     void setCancelled(boolean cancelled);
 
     boolean isCancelled();
 
-    /** {@code setCancelled(true)} と同じです。 */
+    /** Same as {@code setCancelled(true)}. */
     default void cancel() {
         setCancelled(true);
     }

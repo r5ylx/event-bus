@@ -3,7 +3,7 @@ package com.r5ylx.events;
 import java.lang.invoke.MethodHandle;
 import java.lang.reflect.Method;
 
-/** {@code @Subscribe} が付いたメソッドから作られるリスナーです。 */
+/** A listener built from a method annotated with {@code @Subscribe}. */
 final class MethodListener extends Listener {
     private final MethodHandle handle;
     private final String methodName;

@@ -1,7 +1,7 @@
 package com.r5ylx.events;
 
 /**
- * リスナーが投げた例外を包んで再送出するための例外です。
+ * Wraps an exception thrown by a listener so that it can be rethrown.
  *
  * @see EventExceptionHandler#rethrowing()
  */
@@ -17,12 +17,12 @@ public class EventDispatchException extends RuntimeException {
         this.subscription = subscription;
     }
 
-    /** 配送中だったイベントです。直列化された場合は null になります。 */
+    /** The event that was being dispatched. Becomes null once the exception is serialized. */
     public Object getEvent() {
         return event;
     }
 
-    /** 例外を投げたリスナーの購読情報です。直列化された場合は null になります。 */
+    /** The subscription whose listener threw. Becomes null once the exception is serialized. */
     public Subscription getSubscription() {
         return subscription;
     }

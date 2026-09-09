@@ -22,39 +22,41 @@ import java.util.function.Consumer;
 
 
 /**
- * イベントの発行と購読をまとめる場所です。
+ * The place where posting and subscribing to events come together.
  *
- * <h2>配送の規則</h2>
+ * <h2>Dispatch rules</h2>
  * <ul>
- *   <li>イベントは、その型と、すべての親クラス・インターフェースに登録されたリスナーへ届きます。</li>
- *   <li>実行順は<b>型に関係なく</b>優先度だけで決まります。親型に登録された {@code HIGHEST} は、
- *       具象型に登録された {@code LOW} より先に呼ばれます。</li>
- *   <li>同じ優先度どうしは登録順に呼ばれます。</li>
- *   <li>イベントが {@link ICancellable} を実装していて打ち消された場合、そこで配送は<b>完全に</b>終わります。
- *       親型のリスナーにも届きません。</li>
+ *   <li>An event reaches the listeners registered on its own type and on every supertype
+ *       and interface.</li>
+ *   <li>The order is decided by priority alone, <b>regardless of type</b>. A {@code HIGHEST}
+ *       registered on a supertype runs before a {@code LOW} registered on the concrete type.</li>
+ *   <li>Listeners of the same priority run in registration order.</li>
+ *   <li>If the event implements {@link ICancellable} and is cancelled, dispatch ends
+ *       <b>completely</b> at that point. Listeners on supertypes are not reached either.</li>
  * </ul>
  *
- * <h2>スレッド安全性</h2>
- * <p>すべての操作はスレッドセーフです。{@link #post(Object)} は、配送表が温まっていればロックを取りません。
- * ただし配送中に登録・解除を行った場合、その変更がその回の配送に反映されるかは決まっていません。
- * 次回以降の {@code post} からは必ず反映されます。
+ * <h2>Thread safety</h2>
+ * <p>Every operation is thread-safe. {@link #post(Object)} takes no lock once the dispatch table
+ * is warm. If you subscribe or unsubscribe during a dispatch, whether that change is seen by that
+ * dispatch is unspecified. It is always seen from the next {@code post} onwards.
  *
- * <h2>例外の扱い</h2>
- * <p>リスナーが投げた例外は {@link EventExceptionHandler} が受け取ります。既定は再送出です。
- * 握り潰したい場合は {@link #setExceptionHandler(EventExceptionHandler)} で差し替えてください。
+ * <h2>Exceptions</h2>
+ * <p>An exception thrown by a listener is handed to the {@link EventExceptionHandler}, which
+ * rethrows it by default. To swallow it instead, replace the handler with
+ * {@link #setExceptionHandler(EventExceptionHandler)}.
  *
- * <h2>使い方</h2>
+ * <h2>Usage</h2>
  * <pre>{@code
  * EventBus bus = new EventBus();
  *
- * // アノテーションで購読する
+ * // subscribe with an annotation
  * class Listener {
  *     @Subscribe(priority = EventPriority.HIGH)
  *     void onTick(TickEvent event) { ... }
  * }
  * bus.subscribe(new Listener());
  *
- * // ラムダで購読し、取っ手で解除する
+ * // subscribe with a lambda and unsubscribe through the handle
  * Subscription sub = bus.subscribe(TickEvent.class, event -> ...);
  * sub.unsubscribe();
  *
@@ -64,52 +66,52 @@ import java.util.function.Consumer;
 public final class EventBus {
     private static final MethodHandles.Lookup LOOKUP = MethodHandles.lookup();
 
-    /** 優先度の降順、同じ優先度なら登録順です。 */
+    /** Descending priority, and registration order within the same priority. */
     private static final Comparator<Listener> ORDER =
         Comparator.comparingInt(Listener::priority).reversed()
             .thenComparingLong(Listener::sequence);
 
-    /** クラスごとの {@code @Subscribe} メソッド一覧です。走査結果は使い回します。 */
+    /** The {@code @Subscribe} methods of each class. The scan result is reused. */
     private static final Map<Class<?>, List<Method>> SUBSCRIBER_CACHE = new ConcurrentHashMap<>();
 
-    /** 登録・解除をまとめて直列化します。{@code post} は配送表が温まっていれば触りません。 */
+    /** Serializes every subscribe and unsubscribe. {@code post} does not touch it once the chain is warm. */
     private final Object mutationLock = new Object();
 
-    /** 購読対象の型ごとのリスナーです。mutationLock で保護します。 */
+    /** The listeners of each subscribed type. Guarded by mutationLock. */
     private final Map<Class<?>, List<Listener>> byType = new LinkedHashMap<>();
 
-    /** 持ち主ごとのリスナーです。同一性で引くため IdentityHashMap を使います。mutationLock で保護します。 */
+    /** The listeners of each owner. IdentityHashMap, because lookup is by identity. Guarded by mutationLock. */
     private final Map<Object, List<Listener>> byOwner = new IdentityHashMap<>();
 
-    /** 具体的なイベント型から、優先度順に並べ終えた配送列への対応表です。 */
+    /** Maps a concrete event type to the dispatch chain already sorted by priority. */
     private final Map<Class<?>, Listener[]> dispatchCache = new ConcurrentHashMap<>();
 
     private final AtomicLong sequence = new AtomicLong();
 
     private volatile EventExceptionHandler exceptionHandler = EventExceptionHandler.rethrowing();
 
-    /** 既定の設定でバスを作ります。例外は再送出されます。 */
+    /** Creates a bus with the default settings. Exceptions are rethrown. */
     public EventBus() {
     }
 
     /**
-     * 例外ハンドラーを指定してバスを作ります。
+     * Creates a bus with the given exception handler.
      *
-     * @param exceptionHandler リスナーが投げた例外の受け取り手
+     * @param exceptionHandler where exceptions thrown by listeners are sent
      */
     public EventBus(EventExceptionHandler exceptionHandler) {
         this.exceptionHandler = Objects.requireNonNull(exceptionHandler, "exceptionHandler");
     }
 
-    // ------------------------------------------------------------------ 発行
+    // ------------------------------------------------------------------ posting
 
     /**
-     * イベントを配送します。
+     * Dispatches an event.
      *
-     * @param event 配送するイベント
-     * @param <T>   イベントの型
-     * @return 引数と同じインスタンス。打ち消しの結果を読み取るために返します
-     * @throws NullPointerException event が null の場合
+     * @param event the event to dispatch
+     * @param <T>   the type of the event
+     * @return the same instance that was passed in, so the cancellation result can be read
+     * @throws NullPointerException if event is null
      */
     public <T> T post(T event) {
         Objects.requireNonNull(event, "event");
@@ -138,7 +140,7 @@ public final class EventBus {
             try {
                 listener.invoke(event);
             } catch (Error e) {
-                // VM レベルの異常はハンドラーへ渡さず、そのまま伝播させます。
+                // A VM level failure is propagated as it is, without going through the handler.
                 throw e;
             } catch (Throwable t) {
                 exceptionHandler.handle(event, listener, t);
@@ -156,18 +158,18 @@ public final class EventBus {
         return event;
     }
 
-    // ------------------------------------------------------------------ 購読（注釈）
+    // ------------------------------------------------------------------ subscribing (annotation)
 
     /**
-     * {@link Subscribe} が付いたメソッドをすべて購読します。
+     * Subscribes every method annotated with {@link Subscribe}.
      *
-     * <p>親クラスやインターフェースで宣言されたメソッドも対象です。
-     * 親で宣言したメソッドを子で上書きし、子にも {@code @Subscribe} を付けた場合でも、登録は 1 つだけです。
+     * <p>Methods declared in supertypes and interfaces are included as well. Even when a method
+     * declared in a supertype is overridden and the override is annotated too, only one is registered.
      *
-     * <p>すでに購読済みのオブジェクトを渡した場合は何もしません。
+     * <p>Does nothing if the object is already subscribed.
      *
-     * @param owner 購読するオブジェクト
-     * @throws IllegalArgumentException {@code @Subscribe} の付いたメソッドの形が正しくない場合
+     * @param owner the object to subscribe
+     * @throws IllegalArgumentException if a method annotated with {@code @Subscribe} has the wrong shape
      */
     public void subscribe(Object owner) {
         Objects.requireNonNull(owner, "owner");
@@ -191,30 +193,31 @@ public final class EventBus {
         }
     }
 
-    // ------------------------------------------------------------------ 購読（ラムダ）
+    // ------------------------------------------------------------------ subscribing (lambda)
 
     /**
-     * ラムダで購読します。持ち主は返り値の取っ手自身になります。
+     * Subscribes with a lambda. The returned handle itself becomes the owner.
      *
-     * @return 解除に使う取っ手
+     * @return the handle used to unsubscribe
      */
     public <T> Subscription subscribe(Class<T> eventType, Consumer<? super T> action) {
         return subscribe(null, eventType, action, EventPriority.NORMAL.value(), false);
     }
 
-    /** 優先度を指定してラムダで購読します。 */
+    /** Subscribes with a lambda at the given priority. */
     public <T> Subscription subscribe(Class<T> eventType, Consumer<? super T> action, EventPriority priority) {
         Objects.requireNonNull(priority, "priority");
         return subscribe(null, eventType, action, priority.value(), false);
     }
 
     /**
-     * 持ち主と優先度を指定してラムダで購読します。
+     * Subscribes with a lambda at the given owner and priority.
      *
-     * <p>持ち主を渡しておくと {@link #unsubscribe(Object)} や {@link #deactivate(Object)} でまとめて扱えます。
+     * <p>Passing an owner lets you handle the subscriptions together through
+     * {@link #unsubscribe(Object)} and {@link #deactivate(Object)}.
      *
-     * @param owner 持ち主。null の場合は取っ手自身が持ち主になります
-     * @param once  true にすると 1 回実行した時点で自動的に解除されます
+     * @param owner the owner. If null, the handle itself becomes the owner
+     * @param once  when true, the subscription is cancelled automatically once it has run
      */
     public <T> Subscription subscribe(Object owner, Class<T> eventType, Consumer<? super T> action,
                                         EventPriority priority, boolean once) {
@@ -223,9 +226,9 @@ public final class EventBus {
     }
 
     /**
-     * 優先度を数値で指定してラムダで購読します。
+     * Subscribes with a lambda at the given numeric priority.
      *
-     * @param priority 大きいほど先に呼ばれます。目安は {@link EventPriority} を参照してください
+     * @param priority the higher it is, the earlier it runs. See {@link EventPriority} for the usual steps
      */
     public <T> Subscription subscribe(Object owner, Class<T> eventType, Consumer<? super T> action,
                                         int priority, boolean once) {
@@ -242,12 +245,12 @@ public final class EventBus {
         return listener;
     }
 
-    // ------------------------------------------------------------------ 解除
+    // ------------------------------------------------------------------ unsubscribing
 
     /**
-     * 指定した持ち主の購読をすべて解除します。
+     * Cancels every subscription of the given owner.
      *
-     * <p>持ち主の判定は同一性（{@code ==}）で行います。{@code equals} は使いません。
+     * <p>The owner is matched by identity ({@code ==}). {@code equals} is not used.
      */
     public void unsubscribe(Object owner) {
         Objects.requireNonNull(owner, "owner");
@@ -276,7 +279,7 @@ public final class EventBus {
         }
     }
 
-    /** すべての購読を解除します。 */
+    /** Cancels every subscription. */
     public void clear() {
         synchronized (mutationLock) {
             for (List<Listener> bucket : byType.values()) {
@@ -291,19 +294,19 @@ public final class EventBus {
         }
     }
 
-    // ------------------------------------------------------------------ 一時的な停止
+    // ------------------------------------------------------------------ suspending
 
-    /** 指定した持ち主のリスナーを呼び出し対象に戻します。 */
+    /** Brings the listeners of the given owner back into the dispatch. */
     public void activate(Object owner) {
         setActive(owner, true);
     }
 
-    /** 指定した持ち主のリスナーを、登録を残したまま呼び出し対象から外します。 */
+    /** Takes the listeners of the given owner out of the dispatch, while keeping them registered. */
     public void deactivate(Object owner) {
         setActive(owner, false);
     }
 
-    /** 指定した持ち主のリスナーの有効・無効をまとめて切り替えます。 */
+    /** Switches the listeners of the given owner on or off together. */
     public void setActive(Object owner, boolean active) {
         Objects.requireNonNull(owner, "owner");
 
@@ -320,21 +323,21 @@ public final class EventBus {
         }
     }
 
-    // ------------------------------------------------------------------ 問い合わせ
+    // ------------------------------------------------------------------ queries
 
     /**
-     * そのイベント型を受け取るリスナーが 1 つでもあるかを返します。
+     * Returns whether there is at least one listener that receives the given event type.
      *
-     * <p>親クラスやインターフェースへの登録も数えます。つまり {@code post} が実際に届ける相手と一致します。
-     * 重いイベントの生成を避ける判定に使えます。
+     * <p>Registrations on supertypes and interfaces are counted too, so this agrees with who
+     * {@code post} would actually reach. Useful for skipping the creation of an expensive event.
      */
     public boolean hasListeners(Class<?> eventType) {
         return listenerCount(eventType) > 0;
     }
 
     /**
-     * そのイベント型を受け取るリスナーの数を返します。
-     * {@link #hasListeners(Class)} と同様、親型への登録も数えます。
+     * Returns how many listeners receive the given event type.
+     * As with {@link #hasListeners(Class)}, registrations on supertypes are counted too.
      */
     public int listenerCount(Class<?> eventType) {
         Objects.requireNonNull(eventType, "eventType");
@@ -344,7 +347,7 @@ public final class EventBus {
         return (chain == null ? buildChain(eventType) : chain).length;
     }
 
-    /** 指定した持ち主の購読を、登録順で返します。 */
+    /** Returns the subscriptions of the given owner, in registration order. */
     public List<Subscription> subscriptionsOf(Object owner) {
         Objects.requireNonNull(owner, "owner");
 
@@ -354,19 +357,19 @@ public final class EventBus {
         }
     }
 
-    /** 現在の例外ハンドラーです。 */
+    /** The current exception handler. */
     public EventExceptionHandler getExceptionHandler() {
         return exceptionHandler;
     }
 
-    /** 例外ハンドラーを差し替えます。配送中に呼んでも安全です。 */
+    /** Replaces the exception handler. Safe to call during a dispatch. */
     public void setExceptionHandler(EventExceptionHandler exceptionHandler) {
         this.exceptionHandler = Objects.requireNonNull(exceptionHandler, "exceptionHandler");
     }
 
-    // ------------------------------------------------------------------ 内部
+    // ------------------------------------------------------------------ internals
 
-    /** mutationLock を保持した状態で呼びます。 */
+    /** Call this while holding mutationLock. */
     private void register(Object owner, List<Listener> listeners) {
         assert Thread.holdsLock(mutationLock);
 
@@ -383,7 +386,7 @@ public final class EventBus {
         dispatchCache.clear();
     }
 
-    /** {@link Listener#unsubscribe()} から呼ばれます。 */
+    /** Called from {@link Listener#unsubscribe()}. */
     void remove(Listener listener) {
         synchronized (mutationLock) {
             if (!listener.isSubscribed()) {
@@ -417,8 +420,8 @@ public final class EventBus {
     }
 
     /**
-     * そのイベント型へ届くリスナーを、型をまたいで 1 本に並べ直します。
-     * 親クラスとインターフェースは {@link Class#isAssignableFrom(Class)} でまとめて拾えます。
+     * Lines the listeners that receive the given event type into a single chain across types.
+     * Supertypes and interfaces are picked up in one pass with {@link Class#isAssignableFrom(Class)}.
      */
     private Listener[] buildChain(Class<?> eventType) {
         synchronized (mutationLock) {
@@ -446,8 +449,8 @@ public final class EventBus {
     }
 
     /**
-     * {@code @Subscribe} が付いたメソッドを、派生側を優先して 1 つずつ集めます。
-     * 親で宣言したメソッドを子で上書きした場合、登録されるのは子の 1 件だけです。
+     * Collects the methods annotated with {@code @Subscribe} one by one, preferring the derived side.
+     * When a method declared in a supertype is overridden, only the one on the subclass is registered.
      */
     private static List<Method> collectSubscribers(Class<?> type) {
         Map<String, Method> unique = new LinkedHashMap<>();
@@ -466,7 +469,7 @@ public final class EventBus {
         return List.copyOf(unique.values());
     }
 
-    /** 派生側から順に、クラスとインターフェースをたどります。 */
+    /** Walks the classes and interfaces, starting from the derived side. */
     private static List<Class<?>> hierarchy(Class<?> type) {
         Set<Class<?>> visited = new LinkedHashSet<>();
         Deque<Class<?>> queue = new ArrayDeque<>();
@@ -493,23 +496,23 @@ public final class EventBus {
 
     private static void validate(Method method) {
         if (method.getParameterCount() != 1) {
-            throw new IllegalArgumentException(describe(method) + " は引数がちょうど 1 つである必要があります");
+            throw new IllegalArgumentException(describe(method) + " must take exactly one parameter");
         }
 
         if (method.getReturnType() != void.class) {
-            throw new IllegalArgumentException(describe(method) + " は戻り値が void である必要があります");
+            throw new IllegalArgumentException(describe(method) + " must return void");
         }
 
         if (Modifier.isStatic(method.getModifiers())) {
-            throw new IllegalArgumentException(describe(method) + " は static であってはいけません");
+            throw new IllegalArgumentException(describe(method) + " must not be static");
         }
 
         if (Modifier.isAbstract(method.getModifiers())) {
-            throw new IllegalArgumentException(describe(method) + " は abstract であってはいけません");
+            throw new IllegalArgumentException(describe(method) + " must not be abstract");
         }
 
         if (method.getParameterTypes()[0].isPrimitive()) {
-            throw new IllegalArgumentException(describe(method) + " の引数はプリミティブ型にできません");
+            throw new IllegalArgumentException(describe(method) + " must not take a primitive parameter");
         }
     }
 
@@ -524,7 +527,7 @@ public final class EventBus {
     }
 
     private static String describe(Method method) {
-        return "@Subscribe が付いた " + method.getDeclaringClass().getName() + "#" + method.getName();
+        return "@Subscribe " + method.getDeclaringClass().getName() + "#" + method.getName();
     }
 
     private static MethodHandle bind(Method method, Object owner) {
@@ -535,7 +538,7 @@ public final class EventBus {
 
             return LOOKUP.unreflect(method).bindTo(owner);
         } catch (IllegalAccessException | InaccessibleObjectException e) {
-            throw new IllegalArgumentException(describe(method) + " へアクセスできません", e);
+            throw new IllegalArgumentException(describe(method) + " is not accessible", e);
         }
     }
 }

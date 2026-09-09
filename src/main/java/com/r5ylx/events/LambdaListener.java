@@ -2,7 +2,7 @@ package com.r5ylx.events;
 
 import java.util.function.Consumer;
 
-/** ラムダで登録されたリスナーです。 */
+/** A listener registered with a lambda. */
 final class LambdaListener<T> extends Listener {
     private final Consumer<? super T> action;
 

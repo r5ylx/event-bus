@@ -8,27 +8,27 @@ import java.lang.annotation.Target;
 
 
 /**
- * イベントを受け取るメソッドに付けます。
+ * Marks a method that receives events.
  *
- * <p>対象のメソッドは次の条件を満たす必要があります。満たさないものに付けると
- * {@code EventBus#subscribe(Object)} が例外を投げます。黙って無視はしません。
+ * <p>The annotated method must meet the following conditions. Annotating anything else makes
+ * {@code EventBus#subscribe(Object)} throw. It is never silently ignored.
  *
  * <ul>
- *   <li>引数がちょうど 1 つ</li>
- *   <li>戻り値が {@code void}</li>
- *   <li>{@code static} でも {@code abstract} でもない</li>
+ *   <li>exactly one parameter</li>
+ *   <li>a return type of {@code void}</li>
+ *   <li>neither {@code static} nor {@code abstract}</li>
  * </ul>
  *
- * <p>アノテーションはメソッドへ継承されません。親クラスのメソッドに付いていれば、
- * 子クラスで付け直さなくても購読されます。付け直しても二重には呼ばれません。
+ * <p>Annotations are not inherited by methods. A method annotated in a supertype is subscribed
+ * without annotating it again in the subclass, and annotating it again does not register it twice.
  */
 @Documented
 @Target(ElementType.METHOD)
 @Retention(RetentionPolicy.RUNTIME)
 public @interface Subscribe {
-    /** 実行順序です。大きいものから先に呼ばれます。 */
+    /** The order in which it runs. Higher values run first. */
     EventPriority priority() default EventPriority.NORMAL;
 
-    /** true にすると、1 回呼ばれた時点で自動的に解除されます。 */
+    /** When true, the subscription is cancelled automatically once it has been called. */
     boolean once() default false;
 }

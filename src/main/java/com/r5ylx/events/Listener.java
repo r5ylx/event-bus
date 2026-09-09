@@ -3,9 +3,9 @@ package com.r5ylx.events;
 import java.util.concurrent.atomic.AtomicBoolean;
 
 /**
- * 登録された 1 件のリスナーです。購読の取っ手そのものを兼ねます。
+ * A single registered listener. It doubles as the subscription handle itself.
  *
- * <p>公開 API ではありません。利用側は {@link Subscription} 越しに扱います。
+ * <p>Not public API. Callers work with it through {@link Subscription}.
  */
 abstract class Listener implements Subscription {
     private final EventBus bus;
@@ -14,7 +14,7 @@ abstract class Listener implements Subscription {
     private final int priority;
     private final boolean once;
 
-    /** 同じ優先度の中では登録順を保つための通し番号です。 */
+    /** A running number that keeps registration order within the same priority. */
     private final long sequence;
 
     private final AtomicBoolean consumed = new AtomicBoolean();
@@ -31,12 +31,12 @@ abstract class Listener implements Subscription {
         this.sequence = sequence;
     }
 
-    /** リスナー本体を呼びます。event は {@link #eventType()} に代入可能であることが保証されています。 */
+    /** Calls the listener itself. event is guaranteed to be assignable to {@link #eventType()}. */
     abstract void invoke(Object event) throws Throwable;
 
     /**
-     * 1 回限りのリスナーの実行権を取ります。
-     * 複数のスレッドが同時に配送しても、実行できるのは 1 つだけです。
+     * Claims the right to run a one-shot listener.
+     * Even when several threads dispatch at the same time, only one of them may run it.
      */
     boolean tryConsume() {
         return consumed.compareAndSet(false, true);
@@ -46,7 +46,7 @@ abstract class Listener implements Subscription {
         return sequence;
     }
 
-    /** 解除済みとして印を付けます。EventBus から呼びます。 */
+    /** Marks this listener as unsubscribed. Called from EventBus. */
     void markUnsubscribed() {
         subscribed = false;
     }
@@ -76,7 +76,7 @@ abstract class Listener implements Subscription {
         return eventType;
     }
 
-    /** 持ち主を指定せずに登録された場合は、この取っ手自身が持ち主になります。 */
+    /** If the listener was registered without an owner, this handle itself is the owner. */
     @Override
     public Object owner() {
         return owner == null ? this : owner;

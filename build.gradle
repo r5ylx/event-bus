@@ -22,7 +22,7 @@ java {
 }
 
 tasks.withType(JavaCompile).configureEach {
-    // toolchain ではなく release を使います。JDK を取りに行かないので、どの環境でも同じ結果になります。
+    // Uses release instead of a toolchain, so it never goes looking for a JDK and behaves the same everywhere.
     it.options.release = 21
     it.options.encoding = 'UTF-8'
     it.options.compilerArgs << '-Xlint:all' << '-Werror'
@@ -41,7 +41,7 @@ test {
     }
 }
 
-// Apache 2.0 は配布物にライセンス全文を同梱することを求めています。
+// Apache 2.0 requires the full license text to be shipped with the distribution.
 tasks.withType(Jar).configureEach {
     it.from(projectDir) {
         include 'LICENSE'
@@ -49,7 +49,7 @@ tasks.withType(Jar).configureEach {
     }
 }
 
-// 同じ入力から同じ jar が出るようにします。
+// Makes the same input produce the same jar.
 tasks.withType(AbstractArchiveTask).configureEach {
     it.preserveFileTimestamps = false
     it.reproducibleFileOrder = true
@@ -62,7 +62,7 @@ publishing {
 
             pom {
                 name = 'events'
-                description = 'アノテーションとラムダの両方に対応した、軽量なイベントバスです。'
+                description = 'A small event bus that supports both annotations and lambdas.'
                 licenses {
                     license {
                         name = 'The Apache License, Version 2.0'
@@ -77,6 +77,6 @@ publishing {
     repositories {
         maven {
 
-        }   
+        }
     }
 }
